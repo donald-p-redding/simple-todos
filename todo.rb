@@ -19,23 +19,12 @@ end
 helpers do
   #Provides a class label for a list
   def list_class(list)
-    status = 
-      list[:todos].size > 0 && 
-      list[:todos].count {|todo| todo[:completed] == false } == 0
-
+    status = all_complete?(list)
     'complete' if status
   end
 
   def all_complete?(list)
-    list[:todos].all? {|todo| todo[:completed] == true} && list[:todos].size > 0
-  end
-
-  def todos_count(list)
-    list[:todos].size
-  end
-
-  def todos_remaining_count(list)
-    list[:todos].count {|todo| todo[:completed] == false } 
+    list[:incomplete] == 0 && list[:total] > 0
   end
 
   #Sorts lists. Uncomplete come first.
@@ -56,8 +45,12 @@ helpers do
 end
 
 #Ensues no Todo list can have the same name as an existing list.
-def name_taken?(new_name)
-  @storage.all_lists.any? {|list| list[:name] == new_name}
+def list_name_taken?(new_name)
+  @storage.all_lists.any? {|list| list[:name].downcase == new_name.downcase}
+end
+
+def item_name_taken?(todos, new_name)
+  return "Name taken" if todos.any? {|todo| todo[:name].downcase == new_name.downcase}
 end
 
 
@@ -65,8 +58,8 @@ end
 def error_with_list_name(name)
   if !(1..100).cover? name.strip.size
     "Please use 1 to 100 characters for entry"
-  elsif name_taken?(name)
-    "That list name already exists."
+  elsif list_name_taken?(name)
+    "Name taken"
   end
 end
 
@@ -141,6 +134,7 @@ end
 get "/lists/:list_id" do
   @list_id = params[:list_id].to_i
   @list = @storage.find_list(@list_id)
+  @todos = @storage.fetch_todos(@list_id)
 
   erb :single_list, layout: :layout
 end
@@ -170,9 +164,13 @@ end
 #Adds a todo to a list.
 post "/lists/:list_index/todos" do
   @list_id = params[:list_index].to_i
+  @list = @storage.find_list(@list_id)
+  @todos = @storage.fetch_todos(@list_id)
+
+
   todo_name = params[:todo].strip
 
-  error_msg = error_with_todo_name(todo_name)
+  error_msg = error_with_todo_name(todo_name) || item_name_taken?(@todos, todo_name)
   if error_msg
     session[:error] = error_msg
     erb :single_list, layout: :layout

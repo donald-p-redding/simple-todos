@@ -20,12 +20,30 @@ class DatabasePersistance
   end
 
   def all_lists
-    sql = "SELECT * FROM lists ORDER BY id ASC"
+    sql = <<~SQL
+            SELECT l.*, COUNT(t.id) AS total, COUNT(NULLIF(t.completed, true)) AS incomplete
+            FROM lists l LEFT OUTER JOIN todos t
+            ON l.id = t.list_id
+            GROUP BY l.id;
+          SQL
     result = query(sql)
-
+    
     result.map do |tuple|
-      {id: tuple["id"].to_i , name: tuple["name"] , todos: fetch_todos(tuple["id"])}
+      tuple_to_list_hash(tuple)
     end
+  end
+
+  def find_list(list_id)
+    sql = <<~SQL
+            SELECT l.*, COUNT(t.id) AS total, COUNT(NULLIF(t.completed, true)) AS incomplete
+            FROM lists l LEFT OUTER JOIN todos t
+            ON l.id = t.list_id
+            WHERE l.id = $1
+            GROUP BY l.id;
+          SQL
+
+    result = query(sql, list_id)
+    tuple_to_list_hash(result.first)
   end
 
   def create_new_list(list_name)
@@ -76,15 +94,6 @@ class DatabasePersistance
     query(sql, list_id)
   end
 
-  def find_list(list_id)
-    sql = <<~SQL
-            SELECT * FROM lists WHERE id = $1
-          SQL
-
-    result = query(sql, list_id)
-    result.map { |tuple| { id: tuple["id"].to_i, name: tuple["name"], todos: fetch_todos(list_id) } }.first
-  end
-
   def update_list_name(list_id, new_name)
     sql = <<~SQL
             UPDATE lists
@@ -94,7 +103,6 @@ class DatabasePersistance
     query(sql, list_id, new_name)
   end
 
-  private
   def fetch_todos(list_id)
     sql = <<~SQL
             SELECT * FROM todos WHERE todos.list_id = $1
@@ -102,6 +110,16 @@ class DatabasePersistance
           SQL
     result = query(sql, list_id)
     todos = result.map { |tuple| {id: tuple["id"].to_i, name: tuple["name"], completed: tuple["completed"] == "t"} }
+  end
+
+  private
+  def tuple_to_list_hash(tuple)
+    { 
+      id: tuple["id"].to_i, 
+      name: tuple["name"], 
+      total: tuple["total"].to_i,
+      incomplete: tuple["incomplete"].to_i
+    }
   end
 
 end
